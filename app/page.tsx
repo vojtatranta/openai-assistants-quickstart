@@ -9,6 +9,7 @@ const Home = () => {
     "Function calling": "function-calling",
     "File search": "file-search",
     All: "all",
+    Langtail: "langtail",
   };
 
   return (
