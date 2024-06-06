@@ -40,5 +40,5 @@ export async function GET(request: NextApiRequest) {
     },
   ).then((res) => res.json());
 
-  return Response.json({ result });
+  return Response.json(result);
 }

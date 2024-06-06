@@ -8,37 +8,32 @@ import { getWeather } from "../../utils/weather";
 import zod from "zod";
 
 const WeatherSchema = zod.object({
-  result: zod.object({
-    properties: zod.object({
-      meta: zod.object({
-        units: zod.object({
-          air_temperature: zod.string(),
-        }),
+  properties: zod.object({
+    meta: zod.object({
+      units: zod.object({
+        air_temperature: zod.string(),
       }),
-      timeseries: zod.array(
-        zod.object({
-          data: zod.object({
-            instant: zod.object({
-              details: zod.object({
-                air_temperature: zod.number(),
-              }),
+    }),
+    timeseries: zod.array(
+      zod.object({
+        data: zod.object({
+          instant: zod.object({
+            details: zod.object({
+              air_temperature: zod.number(),
             }),
           }),
         }),
-      ),
-    }),
+      }),
+    ),
   }),
 });
 
 type WeatherType = zod.infer<typeof WeatherSchema>;
 
-function normalizeYrWeatherData(
-  data,
-  cb: (weather: WeatherType) => void,
-): void {
+function normalizeYrWeatherData<T>(data, cb: (weather: WeatherType) => T): T {
   try {
     const weather = WeatherSchema.parse(data);
-    cb(weather);
+    return cb(weather);
   } catch (error) {
     console.warn("Couldn't parse weather data", error);
   }
@@ -47,51 +42,47 @@ function normalizeYrWeatherData(
 const FunctionCalling = () => {
   const [weatherData, setWeatherData] = useState({});
 
-  useEffect(() => {
-    const resp = fetch(
-      `/api/langtail?${new URLSearchParams({
-        location: "Prague, Czech Republic",
-        prompt: "weather",
+  const functionCallHandler = async (call) => {
+    const latestToolCall =
+      call.message.tool_calls[call.message.tool_calls.length - 1];
+
+    if (latestToolCall?.function.name !== "get_weather") {
+      return;
+    }
+
+    const location = JSON.parse(latestToolCall.function.arguments ?? "");
+
+    return fetch(
+      `/api/langtail/weather?${new URLSearchParams({
+        location: location,
       })}`,
       {
         method: "GET",
       },
     )
       .then((res) => res.json())
-      .then((res) => {
-        console.log("res client", res);
-        return fetch(
-          `/api/langtail/weather?${new URLSearchParams({
-            location: "Prague, Czech Republic",
-          })}`,
-          {
-            method: "GET",
-          },
-        );
-      })
-      .then((res) => res.json())
       .then((weather) => {
         console.log("weather", weather);
-        normalizeYrWeatherData(weather, (data) => {
+        const weatherMessage = normalizeYrWeatherData(weather, (data) => {
           const temperature =
-            data.result.properties.timeseries[0].data.instant.details
-              .air_temperature;
+            data.properties.timeseries[0].data.instant.details.air_temperature;
+          const unit = data.properties.meta.units.air_temperature;
           setWeatherData({
             temperature,
-            unit: data.result.properties.meta.units.air_temperature
-              .substring(0, 1)
-              .toUpperCase(),
+            location: location.location,
+            unit: unit.substring(0, 1).toUpperCase(),
           });
-        });
-      });
-  }, []);
 
-  const functionCallHandler = async (call) => {
-    if (call?.function?.name !== "get_weather") return;
-    const args = JSON.parse(call.function.arguments);
-    const data = getWeather(args.location);
-    setWeatherData(data);
-    return JSON.stringify(data);
+          return `${temperature} ${unit}`;
+        });
+
+        return {
+          role: "tool",
+          name: latestToolCall.function.name,
+          tool_call_id: latestToolCall.id,
+          content: weatherMessage,
+        };
+      });
   };
 
   return (

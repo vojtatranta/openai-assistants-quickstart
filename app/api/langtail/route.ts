@@ -5,14 +5,12 @@ import { lt } from "../../langtail";
 export async function GET(request: NextApiRequest) {
   const url = new URL(request.url);
 
-  const options = {
+  const messages = JSON.parse(url.searchParams.get("messages"));
+  console.log("messages", messages);
+  const result = await lt.prompts.invoke({
     prompt: url.searchParams.get("prompt"),
-    variables: {
-      location: url.searchParams.get("location"),
-    },
-  };
+    messages,
+  });
 
-  const result = await lt.prompts.invoke(options);
-
-  return Response.json({ result });
+  return Response.json(result);
 }
