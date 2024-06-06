@@ -1,11 +1,8 @@
-import { NextApiRequest } from "next";
+import { NextRequest } from "next/server";
 
 // Create a new assistant
-export async function GET(request: NextApiRequest) {
-  const url = new URL(request.url);
-
-  console.log("url.searchParams", url.searchParams);
-
+export async function GET(request: NextRequest) {
+  const url = new URL(request.url ?? "");
   const geocodingResult = await fetch(
     `https://api.mapy.cz/v1/geocode?query=${url.searchParams.get("location")}&lang=cs&limit=5&type=regional&type=poi`,
     {
@@ -26,8 +23,6 @@ export async function GET(request: NextApiRequest) {
       status: 404,
     });
   }
-
-  console.log("position", position);
 
   const result = await fetch(
     `https://api.met.no/weatherapi/locationforecast/2.0/complete?lat=${position.lat}&lon=${position.lon}&altitude=500`,

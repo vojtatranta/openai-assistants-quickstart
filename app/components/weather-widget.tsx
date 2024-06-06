@@ -1,6 +1,16 @@
 import React from "react";
 import styles from "./weather-widget.module.css";
 
+export const conditionClassMap = {
+  Cloudy: styles.weatherBGCloudy,
+  Sunny: styles.weatherBGSunny,
+  Rainy: styles.weatherBGRainy,
+  Snowy: styles.weatherBGSnowy,
+  Windy: styles.weatherBGWindy,
+} as const;
+
+export type SkyCondition = keyof typeof conditionClassMap;
+
 const WeatherWidget = ({
   location = "---",
   temperature = "---",
@@ -8,14 +18,6 @@ const WeatherWidget = ({
   unit = "",
   isEmpty = false,
 }) => {
-  const conditionClassMap = {
-    Cloudy: styles.weatherBGCloudy,
-    Sunny: styles.weatherBGSunny,
-    Rainy: styles.weatherBGRainy,
-    Snowy: styles.weatherBGSnowy,
-    Windy: styles.weatherBGWindy,
-  };
-
   if (isEmpty) {
     return (
       <div className={`${styles.weatherWidget} ${styles.weatherEmptyState}`}>

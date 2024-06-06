@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import styles from "./chat.module.css";
 import Markdown from "react-markdown";
-import zod, { set } from "zod";
+import zod from "zod";
 
 const aiDataSchema = zod.object({
   id: zod.string(),
@@ -12,7 +12,7 @@ const aiDataSchema = zod.object({
       finish_reason: zod.string(),
       message: zod.object({
         content: zod.string().nullable(),
-        role: zod.string(),
+        role: zod.enum(["user", "assistant", "tool"]),
         tool_calls: zod
           .array(
             zod.object({
@@ -32,16 +32,11 @@ const aiDataSchema = zod.object({
 
 type AIData = zod.infer<typeof aiDataSchema>;
 
-type MessageProps = {
-  role: "user" | "assistant" | "code";
-  text: string;
-};
-
-const UserMessage = ({ text }: { text: string }) => {
+const UserMessage = ({ text }: { text: string | null }) => {
   return <div className={styles.userMessage}>{text}</div>;
 };
 
-const AssistantMessage = ({ text }: { text: string }) => {
+const AssistantMessage = ({ text }: { text: string | null }) => {
   return (
     <div className={styles.assistantMessage}>
       <Markdown>{text}</Markdown>
@@ -49,69 +44,43 @@ const AssistantMessage = ({ text }: { text: string }) => {
   );
 };
 
-const CodeMessage = ({ text }: { text: string }) => {
-  return (
-    <div className={styles.codeMessage}>
-      {text.split("\n").map((line, index) => (
-        <div key={index}>
-          <span>{`${index + 1}. `}</span>
-          {line}
-        </div>
-      ))}
-    </div>
-  );
-};
-
-const Message = ({ role, text }: MessageProps) => {
+const Message = ({ role, content }: ChatMessage) => {
   switch (role) {
     case "user":
-      return <UserMessage text={text} />;
+      return <UserMessage text={content} />;
     case "assistant":
-      return <AssistantMessage text={text} />;
-    case "code":
-      return <CodeMessage text={text} />;
+      return <AssistantMessage text={content} />;
     default:
       return null;
   }
 };
 
 type ChatProps = {
-  functionCallHandler?: (toolCall: AIData["choices"][number]) => Promise<{
-    role: "tool";
-    tool_call_id: string;
-    content: string;
-  }>;
+  functionCallHandler?: (
+    toolCall: ChatMessage,
+  ) => Promise<ChatMessage | undefined>;
 };
 
-function invokePrompt(
-  messages: { role: "user" | "tool" | "assistent"; content: string }[],
-) {
-  return fetch(
-    `/api/langtail?${new URLSearchParams({
-      prompt: "weather",
-      messages: JSON.stringify(messages),
-    })}`,
-    {
-      method: "GET",
+function invokePrompt(messages: ChatMessage[]) {
+  return fetch(`/api/langtail`, {
+    method: "POST",
+    body: JSON.stringify({ messages }),
+    headers: {
+      "Content-Type": "application/json",
     },
-  )
+  })
     .then((res) => res.json())
-    .then((rawAiData) => {
-      console.log("rawAiData", rawAiData);
-      return aiDataSchema.parse(rawAiData);
-    });
+    .then((rawAiData) => aiDataSchema.parse(rawAiData));
 }
 
-type ChatMessage = {
-  role: "user" | "assistant" | "tool";
-  content: string;
-};
+export type ChatMessage = AIData["choices"][number]["message"];
 
 const Chat = ({
   functionCallHandler, // default to return empty string
 }: ChatProps) => {
   const [userInput, setUserInput] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const messageRef = useRef<ChatMessage[]>([]);
   const [inputDisabled, setInputDisabled] = useState(false);
 
   // automatically scroll to bottom of chat
@@ -119,53 +88,49 @@ const Chat = ({
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
+
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
 
-  const handleMessagAiMessages = async (aiData: AIData) => {
-    console.log("ai data", aiData);
+  const appendMessages = (newMessages: ChatMessage[]) => {
+    messageRef.current = [...messageRef.current, ...newMessages];
+    setMessages([...messageRef.current]);
 
+    return messageRef.current;
+  };
+
+  const handleMessagAiMessages = (aiData: AIData) => {
     const latestChoice = aiData.choices[aiData.choices.length - 1];
     if (latestChoice?.finish_reason === "tool_calls") {
-      console.log("bum", latestChoice);
-      await functionCallHandler?.(latestChoice).then((toolMessage) => {
-        console.log("bum resolved", toolMessage);
+      functionCallHandler?.(latestChoice.message).then((toolMessage) => {
         if (toolMessage) {
-          const nextMessages = [...messages, latestChoice.message, toolMessage];
-          invokePrompt(nextMessages).then((toolResultAiData) => {
+          const currentMessages = appendMessages([
+            latestChoice.message,
+            toolMessage,
+          ]);
+          invokePrompt(currentMessages).then((toolResultAiData) => {
             handleMessagAiMessages(toolResultAiData);
+            handleRunCompleted();
           });
-          return nextMessages;
         }
       });
     }
 
     if (latestChoice?.finish_reason === "stop") {
-      setMessages((prevMessages) => {
-        return [...prevMessages, latestChoice.message];
-      });
+      appendMessages([latestChoice.message]);
+      handleRunCompleted();
     }
-
-    handleRunCompleted();
   };
-
-  console.log("messages", messages);
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (!userInput.trim()) return;
-    setMessages((prevMessages) => {
-      const nextMessages = [
-        ...messages,
-        { role: "user" as const, content: userInput },
-      ];
+    if (!userInput.trim() || inputDisabled) return;
 
-      invokePrompt(nextMessages).then((aiData) => {
-        handleMessagAiMessages(aiData);
-      });
-
-      return nextMessages;
+    invokePrompt(
+      appendMessages([{ role: "user" as const, content: userInput }]),
+    ).then((aiData) => {
+      handleMessagAiMessages(aiData);
     });
 
     setUserInput("");
@@ -173,7 +138,6 @@ const Chat = ({
     scrollToBottom();
   };
 
-  // handleRunCompleted - re-enable the input form
   const handleRunCompleted = () => {
     setInputDisabled(false);
   };
@@ -184,7 +148,7 @@ const Chat = ({
         {messages
           .filter((msg) => msg.content)
           .map((msg, index) => (
-            <Message key={index} role={msg.role} text={msg.content} />
+            <Message key={index} role={msg.role} content={msg.content} />
           ))}
         <div ref={messagesEndRef} />
       </div>

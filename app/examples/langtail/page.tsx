@@ -2,8 +2,8 @@
 
 import React, { useEffect, useState } from "react";
 import styles from "./page.module.css";
-import Chat from "../../components/chat";
-import WeatherWidget from "../../components/weather-widget";
+import Chat, { ChatMessage } from "../../components/chat";
+import WeatherWidget, { SkyCondition } from "../../components/weather-widget";
 import { getWeather } from "../../utils/weather";
 import zod from "zod";
 
@@ -22,6 +22,13 @@ const WeatherSchema = zod.object({
               air_temperature: zod.number(),
             }),
           }),
+          next_1_hours: zod
+            .object({
+              summary: zod.object({
+                symbol_code: zod.string(),
+              }),
+            })
+            .optional(),
         }),
       }),
     ),
@@ -30,7 +37,11 @@ const WeatherSchema = zod.object({
 
 type WeatherType = zod.infer<typeof WeatherSchema>;
 
-function normalizeYrWeatherData<T>(data, cb: (weather: WeatherType) => T): T {
+function normalizeYrWeatherData<T>(
+  data,
+  cb: (weather: WeatherType) => T,
+): T | undefined {
+  console.log("raw weather data", data);
   try {
     const weather = WeatherSchema.parse(data);
     return cb(weather);
@@ -39,12 +50,39 @@ function normalizeYrWeatherData<T>(data, cb: (weather: WeatherType) => T): T {
   }
 }
 
+function decodeSkyState(maybeSkyState: string): SkyCondition | null {
+  if (maybeSkyState.includes("cloud")) {
+    return "Cloudy";
+  }
+
+  if (maybeSkyState.includes("rain")) {
+    return "Rainy";
+  }
+
+  if (maybeSkyState.includes("snow")) {
+    return "Snowy";
+  }
+
+  if (maybeSkyState.includes("wind")) {
+    return "Windy";
+  }
+
+  if (maybeSkyState.includes("fair")) {
+    return "Sunny";
+  }
+
+  if (maybeSkyState.includes("sunny")) {
+    return "Sunny";
+  }
+
+  return null;
+}
+
 const FunctionCalling = () => {
   const [weatherData, setWeatherData] = useState({});
 
-  const functionCallHandler = async (call) => {
-    const latestToolCall =
-      call.message.tool_calls[call.message.tool_calls.length - 1];
+  const functionCallHandler = async (message: ChatMessage) => {
+    const latestToolCall = message.tool_calls?.[message.tool_calls.length - 1];
 
     if (latestToolCall?.function.name !== "get_weather") {
       return;
@@ -54,35 +92,38 @@ const FunctionCalling = () => {
 
     return fetch(
       `/api/langtail/weather?${new URLSearchParams({
-        location: location,
+        location: location.location,
       })}`,
       {
         method: "GET",
       },
     )
       .then((res) => res.json())
-      .then((weather) => {
-        console.log("weather", weather);
-        const weatherMessage = normalizeYrWeatherData(weather, (data) => {
-          const temperature =
-            data.properties.timeseries[0].data.instant.details.air_temperature;
-          const unit = data.properties.meta.units.air_temperature;
-          setWeatherData({
-            temperature,
-            location: location.location,
-            unit: unit.substring(0, 1).toUpperCase(),
-          });
+      .then((weather) => ({
+        role: "tool" as const,
+        name: latestToolCall.function.name,
+        tool_call_id: latestToolCall.id,
+        content:
+          normalizeYrWeatherData(weather, (data) => {
+            const temperature =
+              data.properties.timeseries[0].data.instant.details
+                .air_temperature;
+            const unit = data.properties.meta.units.air_temperature;
 
-          return `${temperature} ${unit}`;
-        });
+            setWeatherData({
+              temperature,
+              location: location.location,
+              unit: unit.substring(0, 1).toUpperCase(),
+              conditions:
+                decodeSkyState(
+                  data.properties.timeseries[0].data.next_1_hours?.summary
+                    .symbol_code ?? "",
+                ) || "Sunny",
+            });
 
-        return {
-          role: "tool",
-          name: latestToolCall.function.name,
-          tool_call_id: latestToolCall.id,
-          content: weatherMessage,
-        };
-      });
+            return `${temperature} ${unit}`;
+          }) ?? "---",
+      }));
   };
 
   return (

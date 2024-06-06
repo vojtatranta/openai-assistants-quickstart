@@ -1,14 +1,12 @@
-import { NextApiRequest } from "next";
 import { lt } from "../../langtail";
+import { NextRequest } from "next/server";
 
 // Create a new assistant
-export async function GET(request: NextApiRequest) {
-  const url = new URL(request.url);
+export async function POST(request: NextRequest) {
+  const messages = (await request.json()).messages;
 
-  const messages = JSON.parse(url.searchParams.get("messages"));
-  console.log("messages", messages);
   const result = await lt.prompts.invoke({
-    prompt: url.searchParams.get("prompt"),
+    prompt: "weather",
     messages,
   });
 
