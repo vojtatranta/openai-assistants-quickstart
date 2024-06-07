@@ -15,14 +15,10 @@ export async function GET(request: NextRequest) {
     },
   ).then((res) => res.json());
 
-  const position = geocodingResult?.items?.[0]?.position;
-
-  if (!position) {
-    return Response.json({
-      error: "Couldn't find location",
-      status: 404,
-    });
-  }
+  const position = geocodingResult?.items?.[0]?.position ?? {
+    lat: 50.083,
+    lon: 14.417,
+  };
 
   const result = await fetch(
     `https://api.met.no/weatherapi/locationforecast/2.0/complete?lat=${position.lat}&lon=${position.lon}&altitude=500`,
