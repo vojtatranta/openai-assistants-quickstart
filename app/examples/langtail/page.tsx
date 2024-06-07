@@ -8,31 +8,10 @@ import { getWeather } from "../../utils/weather";
 import zod from "zod";
 
 const WeatherSchema = zod.object({
-  properties: zod.object({
-    meta: zod.object({
-      units: zod.object({
-        air_temperature: zod.string(),
-      }),
-    }),
-    timeseries: zod.array(
-      zod.object({
-        data: zod.object({
-          instant: zod.object({
-            details: zod.object({
-              air_temperature: zod.number(),
-            }),
-          }),
-          next_1_hours: zod
-            .object({
-              summary: zod.object({
-                symbol_code: zod.string(),
-              }),
-            })
-            .optional(),
-        }),
-      }),
-    ),
+  main: zod.object({
+    temp: zod.number(),
   }),
+  weather: zod.array(zod.object({ main: zod.string() })),
 });
 
 type WeatherType = zod.infer<typeof WeatherSchema>;
@@ -51,27 +30,28 @@ function normalizeYrWeatherData<T>(
 }
 
 function decodeSkyState(maybeSkyState: string): SkyCondition | null {
-  if (maybeSkyState.includes("cloud")) {
+  const loweredCase = maybeSkyState.toLocaleLowerCase();
+  if (loweredCase.includes("cloud")) {
     return "Cloudy";
   }
 
-  if (maybeSkyState.includes("rain")) {
+  if (loweredCase.includes("rain")) {
     return "Rainy";
   }
 
-  if (maybeSkyState.includes("snow")) {
+  if (loweredCase.includes("snow")) {
     return "Snowy";
   }
 
-  if (maybeSkyState.includes("wind")) {
+  if (loweredCase.includes("wind")) {
     return "Windy";
   }
 
-  if (maybeSkyState.includes("fair")) {
+  if (loweredCase.includes("fair")) {
     return "Sunny";
   }
 
-  if (maybeSkyState.includes("sunny")) {
+  if (loweredCase.includes("sun")) {
     return "Sunny";
   }
 
@@ -99,29 +79,25 @@ const FunctionCalling = () => {
       },
     )
       .then((res) => res.json())
+      .then((weatherData) => weatherData)
       .then((weather) => ({
         role: "tool" as const,
         name: latestToolCall.function.name,
         tool_call_id: latestToolCall.id,
         content:
           normalizeYrWeatherData(weather, (data) => {
-            const temperature =
-              data.properties.timeseries[0].data.instant.details
-                .air_temperature;
-            const unit = data.properties.meta.units.air_temperature;
+            const temperature = data.main.temp;
+            const unit = "C";
+            const conditions = decodeSkyState(data.weather[0]?.main) ?? "Sunny";
 
             setWeatherData({
               temperature,
               location: location.location,
               unit: unit.substring(0, 1).toUpperCase(),
-              conditions:
-                decodeSkyState(
-                  data.properties.timeseries[0].data.next_1_hours?.summary
-                    .symbol_code ?? "",
-                ) || "Sunny",
+              conditions,
             });
 
-            return `${temperature} ${unit}`;
+            return `${temperature}, ${unit}, ${conditions}`;
           }) ?? "---",
       }));
   };
