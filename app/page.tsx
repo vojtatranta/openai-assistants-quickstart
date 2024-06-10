@@ -60,7 +60,14 @@ function decodeSkyState(maybeSkyState: string): SkyCondition | null {
 }
 
 const FunctionCalling = () => {
-  const [weatherData, setWeatherData] = useState<WeatherData[]>([]);
+  const [weatherData, setWeatherData] = useState<WeatherData[]>([
+    {
+      location: "---",
+      temperature: "---",
+      conditions: "Sunny",
+      unit: "C",
+    },
+  ]);
 
   const functionCallHandler = async (message: ChatMessage) => {
     const weatherToolCalls =
