@@ -132,7 +132,7 @@ const FunctionCalling = () => {
       <div className={styles.container}>
         <div className={styles.weatherColumn}>
           {weatherData.map((data) => (
-            <WeatherWidget {...data} />
+            <WeatherWidget key={data.location} {...data} />
           ))}
         </div>
         <div className={styles.chatContainer}>

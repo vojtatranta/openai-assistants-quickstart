@@ -88,21 +88,22 @@ function invokePromptStream(
     if (reader) {
       while (true) {
         const { done, value } = await reader.read();
-
         if (done) {
           break;
         }
-        const regex: RegExp = /0:"([\s\S]*?)"/g;
 
-        const matches: string[] = [];
-        let match: RegExpExecArray | null;
-        const clearedValue = value.replace(/\\n/g, "\n");
-
-        while ((match = regex.exec(clearedValue)) !== null) {
-          matches.push(match[1]);
-        }
-
-        onText(matches.join(""));
+        value
+          .split("\n")
+          .filter(Boolean)
+          .map((v) => {
+            try {
+              return JSON.parse(v).choices[0]?.delta?.content;
+            } catch (e) {
+              return "";
+            }
+          })
+          .filter(Boolean)
+          .forEach(onText);
       }
     }
   });
