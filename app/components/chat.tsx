@@ -58,7 +58,7 @@ const Message = ({ role, content }: ChatMessage) => {
 type ChatProps = {
   functionCallHandler?: (
     toolCall: ChatMessage,
-  ) => Promise<ChatMessage | undefined>;
+  ) => Promise<ChatMessage[] | undefined>;
 };
 
 function invokePrompt(messages: ChatMessage[]) {
@@ -103,11 +103,11 @@ const Chat = ({
   const handleMessagAiMessages = (aiData: AIData) => {
     const latestChoice = aiData.choices[aiData.choices.length - 1];
     if (latestChoice?.finish_reason === "tool_calls") {
-      functionCallHandler?.(latestChoice.message).then((toolMessage) => {
-        if (toolMessage) {
+      functionCallHandler?.(latestChoice.message).then((toolMessages) => {
+        if (toolMessages) {
           const currentMessages = appendMessages([
             latestChoice.message,
-            toolMessage,
+            ...toolMessages,
           ]);
           invokePrompt(currentMessages).then((toolResultAiData) => {
             handleMessagAiMessages(toolResultAiData);

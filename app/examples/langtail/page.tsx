@@ -3,7 +3,10 @@
 import React, { useEffect, useState } from "react";
 import styles from "./page.module.css";
 import Chat, { ChatMessage } from "../../components/chat";
-import WeatherWidget, { SkyCondition } from "../../components/weather-widget";
+import WeatherWidget, {
+  SkyCondition,
+  WeatherData,
+} from "../../components/weather-widget";
 import { getWeather } from "../../utils/weather";
 import zod from "zod";
 
@@ -20,7 +23,6 @@ function normalizeYrWeatherData<T>(
   data,
   cb: (weather: WeatherType) => T,
 ): T | undefined {
-  console.log("raw weather data", data);
   try {
     const weather = WeatherSchema.parse(data);
     return cb(weather);
@@ -59,54 +61,79 @@ function decodeSkyState(maybeSkyState: string): SkyCondition | null {
 }
 
 const FunctionCalling = () => {
-  const [weatherData, setWeatherData] = useState({});
+  const [weatherData, setWeatherData] = useState<WeatherData[]>([]);
 
   const functionCallHandler = async (message: ChatMessage) => {
-    const latestToolCall = message.tool_calls?.[message.tool_calls.length - 1];
+    const weatherToolCalls =
+      message.tool_calls?.filter(
+        (toolCall) => toolCall.function.name === "get_weather",
+      ) ?? [];
 
-    if (latestToolCall?.function.name !== "get_weather") {
+    if ((weatherToolCalls?.length ?? 0) === 0) {
       return;
     }
 
-    const location = JSON.parse(latestToolCall.function.arguments ?? "");
+    return Promise.all(
+      weatherToolCalls.map((toolCall) => {
+        const location = JSON.parse(toolCall.function.arguments ?? "");
 
-    return fetch(
-      `/api/langtail/weather?${new URLSearchParams({
-        location: location.location,
-      })}`,
-      {
-        method: "GET",
-      },
-    )
-      .then((res) => res.json())
-      .then((weatherData) => weatherData)
-      .then((weather) => ({
-        role: "tool" as const,
-        name: latestToolCall.function.name,
-        tool_call_id: latestToolCall.id,
-        content:
-          normalizeYrWeatherData(weather, (data) => {
-            const temperature = data.main.temp;
-            const unit = "C";
-            const conditions = decodeSkyState(data.weather[0]?.main) ?? "Sunny";
+        return fetch(
+          `/api/langtail/weather?${new URLSearchParams({
+            location: location.location,
+          })}`,
+          {
+            method: "GET",
+          },
+        )
+          .then((res) => res.json())
+          .then((weatherData) => ({ toolCall, weatherData, location }));
+      }),
+    ).then((weathers) => {
+      const weatherMessages = weathers.map(
+        ({ toolCall, weatherData, location }) => {
+          let temperature: number | null = null;
+          const unit: string | null = "C";
+          let conditions: SkyCondition | null = null;
 
-            setWeatherData({
-              temperature,
-              location: location.location,
-              unit: unit.substring(0, 1).toUpperCase(),
-              conditions,
-            });
+          const weatherAiMessage = {
+            role: "tool" as const,
+            name: toolCall.function.name,
+            tool_call_id: toolCall.id,
+            content:
+              normalizeYrWeatherData(weatherData, (data) => {
+                temperature = data.main.temp;
+                conditions = decodeSkyState(data.weather[0]?.main) ?? "Sunny";
 
-            return `${temperature}, ${unit}, ${conditions}`;
-          }) ?? "---",
-      }));
+                return `${temperature}, ${unit}, ${conditions}`;
+              }) ?? "---",
+          };
+
+          const weatherWidgetData: WeatherData = {
+            temperature: temperature ?? "---",
+            location: location.location,
+            unit: unit.substring(0, 1).toUpperCase(),
+            conditions: conditions ?? "Sunny",
+          };
+
+          return { weatherWidgetData, weatherAiMessage };
+        },
+      );
+
+      setWeatherData(
+        weatherMessages.map(({ weatherWidgetData }) => weatherWidgetData),
+      );
+
+      return weatherMessages.map(({ weatherAiMessage }) => weatherAiMessage);
+    });
   };
 
   return (
     <main className={styles.main}>
       <div className={styles.container}>
-        <div className={styles.column}>
-          <WeatherWidget {...weatherData} />
+        <div className={styles.weatherColumn}>
+          {weatherData.map((data) => (
+            <WeatherWidget {...data} />
+          ))}
         </div>
         <div className={styles.chatContainer}>
           <div className={styles.chat}>

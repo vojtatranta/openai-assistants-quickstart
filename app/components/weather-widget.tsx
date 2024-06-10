@@ -11,13 +11,20 @@ export const conditionClassMap = {
 
 export type SkyCondition = keyof typeof conditionClassMap;
 
+export type WeatherData = {
+  location: string;
+  temperature: string;
+  conditions: SkyCondition;
+  unit: string;
+};
+
 const WeatherWidget = ({
   location = "---",
   temperature = "---",
   conditions = "Sunny",
   unit = "",
   isEmpty = false,
-}) => {
+}: WeatherData & { isEmpty?: boolean }) => {
   if (isEmpty) {
     return (
       <div className={`${styles.weatherWidget} ${styles.weatherEmptyState}`}>
