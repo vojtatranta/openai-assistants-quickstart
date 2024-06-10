@@ -73,6 +73,41 @@ function invokePrompt(messages: ChatMessage[]) {
     .then((rawAiData) => aiDataSchema.parse(rawAiData));
 }
 
+function invokePromptStream(
+  messages: ChatMessage[],
+  onText: (text: string) => void,
+) {
+  return fetch(`/api/langtail/stream`, {
+    method: "POST",
+    body: JSON.stringify({ messages }),
+    headers: {
+      "Content-Type": "application/json",
+    },
+  }).then(async (res) => {
+    const reader = res.body?.pipeThrough(new TextDecoderStream()).getReader();
+    if (reader) {
+      while (true) {
+        const { done, value } = await reader.read();
+
+        if (done) {
+          break;
+        }
+        const regex: RegExp = /0:"([\s\S]*?)"/g;
+
+        const matches: string[] = [];
+        let match: RegExpExecArray | null;
+        const clearedValue = value.replace(/\\n/g, "\n");
+
+        while ((match = regex.exec(clearedValue)) !== null) {
+          matches.push(match[1]);
+        }
+
+        onText(matches.join(""));
+      }
+    }
+  });
+}
+
 export type ChatMessage = AIData["choices"][number]["message"];
 
 const Chat = ({
@@ -100,6 +135,16 @@ const Chat = ({
     return messageRef.current;
   };
 
+  const appendToTheLastMessage = (messageDelta) => {
+    const lastMessage = messageRef.current[messageRef.current.length - 1];
+    lastMessage.content =
+      lastMessage.content === "…" ? "" : lastMessage.content;
+
+    lastMessage.content += messageDelta;
+    setMessages([...messageRef.current]);
+    return messageRef.current;
+  };
+
   const handleMessagAiMessages = (aiData: AIData) => {
     const latestChoice = aiData.choices[aiData.choices.length - 1];
     if (latestChoice?.finish_reason === "tool_calls") {
@@ -108,9 +153,15 @@ const Chat = ({
           const currentMessages = appendMessages([
             latestChoice.message,
             ...toolMessages,
+            {
+              role: "assistant",
+              content: "…",
+            },
           ]);
-          invokePrompt(currentMessages).then((toolResultAiData) => {
-            handleMessagAiMessages(toolResultAiData);
+
+          invokePromptStream(currentMessages, (messageDelta) => {
+            appendToTheLastMessage(messageDelta);
+          }).then(() => {
             handleRunCompleted();
           });
         }

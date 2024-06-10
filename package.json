@@ -9,6 +9,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "ai": "^3.1.30",
     "langtail": "^0.4.1",
     "next": "14.1.4",
     "openai": "^4.46.0",
