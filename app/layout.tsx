@@ -3,8 +3,9 @@ import "./globals.css";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata = {
-  title: "Assistants API Quickstart",
-  description: "A quickstart template using the Assistants API with OpenAI",
+  title: "Langtail Quickstart",
+  description:
+    "A simple app that would should you how to write an AI chat that obtains weather information through Langtail.",
   icons: {
     icon: "/openai.svg",
   },
