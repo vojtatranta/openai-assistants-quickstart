@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef } from "react";
 import styles from "./chat.module.css";
 import Markdown from "react-markdown";
 import zod from "zod";
+import { AiLoading } from "./AiLoading";
 
 const aiDataSchema = zod.object({
   id: zod.string(),
@@ -116,6 +117,7 @@ const Chat = ({
 }: ChatProps) => {
   const [userInput, setUserInput] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [generatingResponse, setGeneratingResponse] = useState<boolean>(false);
   const messageRef = useRef<ChatMessage[]>([]);
   const [inputDisabled, setInputDisabled] = useState(false);
 
@@ -156,11 +158,12 @@ const Chat = ({
             ...toolMessages,
             {
               role: "assistant",
-              content: "…",
+              content: "",
             },
           ]);
 
           invokePromptStream(currentMessages, (messageDelta) => {
+            setGeneratingResponse(false);
             appendToTheLastMessage(messageDelta);
           }).then(() => {
             handleRunCompleted();
@@ -178,6 +181,7 @@ const Chat = ({
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!userInput.trim() || inputDisabled) return;
+    setGeneratingResponse(true);
 
     invokePrompt(
       appendMessages([{ role: "user" as const, content: userInput }]),
@@ -192,6 +196,7 @@ const Chat = ({
 
   const handleRunCompleted = () => {
     setInputDisabled(false);
+    setGeneratingResponse(false);
   };
 
   return (
@@ -202,6 +207,7 @@ const Chat = ({
           .map((msg, index) => (
             <Message key={index} role={msg.role} content={msg.content} />
           ))}
+        {generatingResponse && <AiLoading />}
         <div ref={messagesEndRef} />
       </div>
       <form
