@@ -5,6 +5,11 @@ import styles from "./chat.module.css";
 import Markdown from "react-markdown";
 import zod from "zod";
 import { AiLoading } from "./AiLoading";
+import {
+  createParser,
+  ParsedEvent,
+  ReconnectInterval,
+} from "eventsource-parser";
 
 const aiDataSchema = zod.object({
   id: zod.string(),
@@ -85,7 +90,17 @@ function invokePromptStream(
       "Content-Type": "application/json",
     },
   }).then(async (res) => {
-    const reader = res.body?.pipeThrough(new TextDecoderStream()).getReader();
+    const reader = res.body?.getReader();
+
+    const parser = createParser((event) => {
+      if (event.type === "event" && event.data) {
+        const data = JSON.parse(event.data);
+
+        onText(data?.choices?.[0]?.delta?.content ?? "");
+      }
+    });
+    const decoder = new TextDecoder("utf-8");
+
     if (reader) {
       while (true) {
         const { done, value } = await reader.read();
@@ -93,18 +108,13 @@ function invokePromptStream(
           break;
         }
 
-        value
-          .split("\n")
-          .filter(Boolean)
-          .map((v) => {
-            try {
-              return JSON.parse(v).choices[0]?.delta?.content;
-            } catch (e) {
-              return "";
-            }
-          })
-          .filter(Boolean)
-          .forEach(onText);
+        // NOTE: unknown chunk of text
+        const chunk = decoder.decode(value);
+        // NOTE: it may happen string chunk contains multiple JSON object separated by a newline,
+        // the event source parsers ensures that they are put together properly
+        chunk.split("\n").forEach((line) => {
+          parser.feed(`data: ${line}\n\n`);
+        });
       }
     }
   });

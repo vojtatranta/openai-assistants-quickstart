@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "ai": "^3.1.30",
+    "eventsource-parser": "^1.1.2",
     "langtail": "^0.4.1",
     "next": "14.1.4",
     "openai": "^4.46.0",
